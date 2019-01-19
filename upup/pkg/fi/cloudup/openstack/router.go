@@ -18,7 +18,9 @@ package openstack
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/routers"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kops/util/pkg/vfs"
@@ -75,6 +77,12 @@ func (c *openstackCloud) CreateRouterInterface(routerID string, opt routers.AddI
 	done, err := vfs.RetryWithBackoff(writeBackoff, func() (bool, error) {
 		v, err := routers.AddInterface(c.neutronClient, routerID, opt).Extract()
 		if err != nil {
+			if _, ok := err.(gophercloud.ErrDefault400); ok {
+				if strings.Contains(string(err.(gophercloud.ErrDefault400).Body), "Router already has a port on subnet") {
+					i = v
+					return true, nil
+				}
+			}
 			return false, fmt.Errorf("error creating router interface: %v", err)
 		}
 		i = v
