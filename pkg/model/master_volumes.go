@@ -264,8 +264,8 @@ func (b *MasterVolumeBuilder) addOpenstackVolume(c *fi.ModelBuilderContext, name
 
 	t := &openstacktasks.Volume{
 		Name:             s(name),
-		AvailabilityZone: s(zone),
-		VolumeType:       s(volumeType),
+		AvailabilityZone: s(volumeType),
+		VolumeType:       s(zone),
 		SizeGB:           fi.Int64(int64(volumeSize)),
 		Tags:             tags,
 		Lifecycle:        b.Lifecycle,

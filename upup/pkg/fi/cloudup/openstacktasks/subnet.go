@@ -133,6 +133,7 @@ func (_ *Subnet) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e, changes 
 			IPVersion:  gophercloud.IPv4,
 			CIDR:       fi.StringValue(e.CIDR),
 			EnableDHCP: fi.Bool(true),
+			DNSNameservers: []string{"195.74.0.47", "195.197.54.100"},
 		}
 
 		v, err := t.Cloud.CreateSubnet(opt)
