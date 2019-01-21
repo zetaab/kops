@@ -25,6 +25,24 @@ import (
 	"k8s.io/kops/util/pkg/vfs"
 )
 
+
+func (c *openstackCloud) DeleteSecurityGroup(sgID string) error {
+	done, err := vfs.RetryWithBackoff(writeBackoff, func() (bool, error) {
+		err := sg.Delete(c.neutronClient, sgID).ExtractErr()
+		if err != nil && !isNotFound(err) {
+			return false, fmt.Errorf("error deleting network: %v", err)
+		}
+		return true, nil
+	})
+	if err != nil {
+		return err
+	} else if done {
+		return nil
+	} else {
+		return wait.ErrWaitTimeout
+	}
+}
+
 func (c *openstackCloud) ListSecurityGroups(opt sg.ListOpts) ([]sg.SecGroup, error) {
 	var groups []sg.SecGroup
 

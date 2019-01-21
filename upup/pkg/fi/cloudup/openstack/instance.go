@@ -49,9 +49,13 @@ func (c *openstackCloud) CreateInstance(opt servers.CreateOptsBuilder) (*servers
 func (c *openstackCloud) DeleteInstance(i *cloudinstances.CloudInstanceGroupMember) error {
 	// This is used in rolling-update, but because OS does not have autoscaling groups we need re-create instance here as well. In AWS
 	// the ASG is handling the scaling
-	glog.Warningf("please run 'kops update cluster --name <cluster> --yes' in another termianl")
-	return servers.Delete(c.novaClient, i.ID).ExtractErr()
+	glog.Warningf("please run 'kops update cluster --name <cluster> --yes' in another terminal")
+	return c.DeleteInstanceWithID(i.ID)
 	//return fmt.Errorf("openstackCloud::DeleteInstance not implemented")
+}
+
+func (c *openstackCloud) DeleteInstanceWithID(instanceID string) error {
+	return servers.Delete(c.novaClient, instanceID).ExtractErr()
 }
 
 func (c *openstackCloud) GetInstance(id string) (*servers.Server, error) {

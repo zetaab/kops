@@ -74,6 +74,24 @@ func (c *openstackCloud) ListServerGroups() ([]servergroups.ServerGroup, error) 
 	}
 }
 
+func (c *openstackCloud) DeleteServerGroup(groupID string) error {
+	done, err := vfs.RetryWithBackoff(writeBackoff, func() (bool, error) {
+		err := servergroups.Delete(c.novaClient, groupID).ExtractErr()
+		if err != nil && !isNotFound(err) {
+			return false, fmt.Errorf("error deleting server group: %v", err)
+		}
+		return true, nil
+	})
+	if err != nil {
+		return err
+	} else if done {
+		return nil
+	} else {
+		return wait.ErrWaitTimeout
+	}
+}
+
+
 // matchInstanceGroup filters a list of instancegroups for recognized cloud groups
 func matchInstanceGroup(name string, clusterName string, instancegroups []*kops.InstanceGroup) (*kops.InstanceGroup, error) {
 	var instancegroup *kops.InstanceGroup

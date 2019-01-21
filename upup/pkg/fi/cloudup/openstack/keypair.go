@@ -24,7 +24,49 @@ import (
 	"k8s.io/kops/util/pkg/vfs"
 )
 
-func (c *openstackCloud) ListKeypair(name string) (*keypairs.KeyPair, error) {
+func (c *openstackCloud) DeleteKeyPair(name string) error {
+	done, err := vfs.RetryWithBackoff(readBackoff, func() (bool, error) {
+		err := keypairs.Delete(c.novaClient, name).ExtractErr()
+		if err != nil && !isNotFound(err) {
+			return false, fmt.Errorf("error deleting keypair: %v", err)
+		}
+
+		return true, nil
+	})
+	if err != nil {
+		return err
+	} else if done {
+		return nil
+	} else {
+		return wait.ErrWaitTimeout
+	}
+}
+
+func (c *openstackCloud) ListKeypairs() ([]keypairs.KeyPair, error) {
+	var k []keypairs.KeyPair
+	done, err := vfs.RetryWithBackoff(readBackoff, func() (bool, error) {
+		allPages, err := keypairs.List(c.novaClient).AllPages()
+		if err != nil {
+			return false, fmt.Errorf("error listing keypairs: %v", err)
+		}
+
+		ks, err := keypairs.ExtractKeyPairs(allPages)
+		if err != nil {
+			return false, fmt.Errorf("error extracting keypairs from pages: %v", err)
+		}
+		k = ks
+		return true, nil
+	})
+	if err != nil {
+		return k, err
+	} else if done {
+		return k, nil
+	} else {
+		return k, wait.ErrWaitTimeout
+	}
+}
+
+func (c *openstackCloud) GetKeypair(name string) (*keypairs.KeyPair, error) {
 	var k *keypairs.KeyPair
 	done, err := vfs.RetryWithBackoff(readBackoff, func() (bool, error) {
 		rs, err := keypairs.Get(c.novaClient, name).Extract()
@@ -32,7 +74,7 @@ func (c *openstackCloud) ListKeypair(name string) (*keypairs.KeyPair, error) {
 			if err.Error() == ErrNotFound {
 				return true, nil
 			}
-			return false, fmt.Errorf("error listing keypair: %v", err)
+			return false, fmt.Errorf("error fetching keypair: %v", err)
 		}
 		k = rs
 		return true, nil
