@@ -62,8 +62,39 @@ func (s *PoolAssociation) CompareWithID() *string {
 }
 
 func (p *PoolAssociation) Find(context *fi.Context) (*PoolAssociation, error) {
-	// Task throws no errors for members which already exist in the provided pool
-	return nil, nil
+	cloud := context.Cloud.(openstack.OpenstackCloud)
+
+	opt := v2pools.ListOpts{
+		Name: fi.StringValue(p.Pool.Name),
+		ID:   fi.StringValue(p.Pool.ID),
+	}
+
+	rs, err := cloud.ListPools(opt)
+	if err != nil {
+		return nil, err
+	}
+	if rs == nil {
+		return nil, nil
+	} else if len(rs) != 1 {
+		return nil, fmt.Errorf("found multiple pools with name: %s", fi.StringValue(p.Pool.Name))
+	}
+
+	a := rs[0]
+	pool, err := NewLBPoolTaskFromCloud(cloud, p.Lifecycle, &a, nil)
+	if err != nil {
+		return nil, fmt.Errorf("NewLBListenerTaskFromCloud: failed to fetch pool %s: %v", pool.Name, err)
+	}
+	actual := &PoolAssociation{
+		ID:            p.ID,
+		Name:          p.Name,
+		Pool:          pool,
+		ServerGroup:   p.ServerGroup,
+		InterfaceName: p.InterfaceName,
+		ProtocolPort:  p.ProtocolPort,
+		Lifecycle:     p.Lifecycle,
+	}
+	p.ID = actual.ID
+	return actual, nil
 }
 
 func (s *PoolAssociation) Run(context *fi.Context) error {

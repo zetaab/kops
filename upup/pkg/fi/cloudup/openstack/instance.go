@@ -19,6 +19,7 @@ package openstack
 import (
 	"fmt"
 
+	"github.com/golang/glog"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kops/pkg/cloudinstances"
@@ -46,7 +47,11 @@ func (c *openstackCloud) CreateInstance(opt servers.CreateOptsBuilder) (*servers
 }
 
 func (c *openstackCloud) DeleteInstance(i *cloudinstances.CloudInstanceGroupMember) error {
-	return fmt.Errorf("openstackCloud::DeleteInstance not implemented")
+	// This is used in rolling-update, but because OS does not have autoscaling groups we need re-create instance here as well. In AWS
+	// the ASG is handling the scaling
+	glog.Warningf("please run 'kops update cluster --name <cluster> --yes' in another termianl")
+	return servers.Delete(c.novaClient, i.ID).ExtractErr()
+	//return fmt.Errorf("openstackCloud::DeleteInstance not implemented")
 }
 
 func (c *openstackCloud) GetInstance(id string) (*servers.Server, error) {
