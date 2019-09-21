@@ -309,6 +309,7 @@ type openstackCloud struct {
 	novaClient     *gophercloud.ServiceClient
 	dnsClient      *gophercloud.ServiceClient
 	lbClient       *gophercloud.ServiceClient
+	floatingEnabled bool
 	extNetworkName *string
 	extSubnetName  *string
 	floatingSubnet *string
@@ -404,11 +405,13 @@ func NewOpenstackCloud(tags map[string]string, spec *kops.ClusterSpec) (Openstac
 	}
 
 	octavia := false
+	floatingEnabled := false
 	if spec != nil &&
 		spec.CloudConfig != nil &&
 		spec.CloudConfig.Openstack != nil &&
 		spec.CloudConfig.Openstack.Router != nil {
 
+		floatingEnabled = true
 		c.extNetworkName = spec.CloudConfig.Openstack.Router.ExternalNetwork
 
 		if spec.CloudConfig.Openstack.Router.ExternalSubnet != nil {
@@ -435,6 +438,7 @@ func NewOpenstackCloud(tags map[string]string, spec *kops.ClusterSpec) (Openstac
 			}
 		}
 	}
+	c.floatingEnabled = floatingEnabled
 	c.useOctavia = octavia
 	var lbClient *gophercloud.ServiceClient
 	if spec != nil && spec.CloudConfig != nil && spec.CloudConfig.Openstack != nil {
@@ -641,7 +645,6 @@ func (c *openstackCloud) GetApiIngressStatus(cluster *kops.Cluster) ([]kops.ApiI
 		if err != nil {
 			return ingresses, fmt.Errorf("GetApiIngressStatus: Failed to list master nodes: %v", err)
 		}
-
 		for _, instance := range instances {
 			val, ok := instance.Metadata["k8s"]
 			val2, ok2 := instance.Metadata["KopsRole"]
