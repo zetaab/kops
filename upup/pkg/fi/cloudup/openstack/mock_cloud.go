@@ -35,6 +35,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/loadbalancers"
 	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/monitors"
 	v2pools "github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/pools"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/attributestags"
 	l3floatingip "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/routers"
 	sg "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/security/groups"
@@ -159,6 +160,10 @@ func (c *MockCloud) Region() string {
 
 func (c *MockCloud) AppendTag(resource string, id string, tag string) error {
 	return appendTag(c, resource, id, tag)
+}
+
+func (c *MockCloud) ReplaceAllTags(resource string, id string, opts attributestags.ReplaceAllOptsBuilder) error {
+	return replaceAllTags(c, resource, id, opts)
 }
 
 func (c *MockCloud) AssociateToPool(server *servers.Server, poolID string, opts v2pools.CreateMemberOpts) (association *v2pools.Member, err error) {

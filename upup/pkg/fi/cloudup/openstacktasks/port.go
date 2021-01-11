@@ -18,7 +18,9 @@ package openstacktasks
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/attributestags"
 	secgroup "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/security/groups"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	"k8s.io/klog/v2"
@@ -35,7 +37,7 @@ type Port struct {
 	SecurityGroups           []*SecurityGroup
 	AdditionalSecurityGroups []string
 	Lifecycle                *fi.Lifecycle
-	Tag                      *string
+	Tags                     []string
 }
 
 // GetDependencies returns the dependencies of the Port task
@@ -96,9 +98,13 @@ func newPortTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycl
 		}
 	}
 
-	tag := ""
-	if find != nil && fi.ArrayContains(port.Tags, fi.StringValue(find.Tag)) {
-		tag = fi.StringValue(find.Tag)
+	tags := []string{}
+	if find != nil {
+		for _, tag := range find.Tags {
+			if fi.ArrayContains(port.Tags, tag) {
+				tags = append(tags, tag)
+			}
+		}
 	}
 
 	actual := &Port{
@@ -108,10 +114,11 @@ func newPortTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycl
 		SecurityGroups: sgs,
 		Subnets:        subnets,
 		Lifecycle:      lifecycle,
-		Tag:            fi.String(tag),
+		Tags:           tags,
 	}
 	if find != nil {
 		find.ID = actual.ID
+		actual.Name = find.Name
 		actual.AdditionalSecurityGroups = find.AdditionalSecurityGroups
 	}
 	return actual, nil
@@ -119,8 +126,14 @@ func newPortTaskFromCloud(cloud openstack.OpenstackCloud, lifecycle *fi.Lifecycl
 
 func (s *Port) Find(context *fi.Context) (*Port, error) {
 	cloud := context.Cloud.(openstack.OpenstackCloud)
-	opt := ports.ListOpts{
-		Name: fi.StringValue(s.Name),
+
+	opt := ports.ListOpts{}
+	if len(s.Tags) > 0 {
+		for _, tag := range s.Tags {
+			if strings.HasPrefix(tag, openstack.TagKopsName) {
+				opt.Tags = tag
+			}
+		}
 	}
 	rs, err := cloud.ListPorts(opt)
 	if err != nil {
@@ -171,19 +184,21 @@ func (*Port) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e, changes *Por
 			return fmt.Errorf("Error creating port: %v", err)
 		}
 
-		if e.Tag != nil {
-			err = t.Cloud.AppendTag(openstack.ResourceTypePort, v.ID, fi.StringValue(e.Tag))
-			if err != nil {
-				return fmt.Errorf("Error appending tag to port: %v", err)
-			}
+		err = t.Cloud.ReplaceAllTags(openstack.ResourceTypePort, v.ID, attributestags.ReplaceAllOpts{
+			Tags: e.Tags,
+		})
+		if err != nil {
+			return fmt.Errorf("Error replacing tags: %v", err)
 		}
 		e.ID = fi.String(v.ID)
 		klog.V(2).Infof("Creating a new Openstack port, id=%s", v.ID)
 		return nil
-	} else if changes != nil && changes.Tag != nil {
-		err := t.Cloud.AppendTag(openstack.ResourceTypePort, fi.StringValue(a.ID), fi.StringValue(changes.Tag))
+	} else if changes != nil && changes.Tags != nil {
+		err := t.Cloud.ReplaceAllTags(openstack.ResourceTypePort, fi.StringValue(a.ID), attributestags.ReplaceAllOpts{
+			Tags: e.Tags,
+		})
 		if err != nil {
-			return fmt.Errorf("Error appending tag to port: %v", err)
+			return fmt.Errorf("Error replacing tags: %v", err)
 		}
 	}
 	e.ID = a.ID

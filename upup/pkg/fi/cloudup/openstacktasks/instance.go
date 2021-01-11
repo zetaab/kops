@@ -36,6 +36,7 @@ import (
 type Instance struct {
 	ID               *string
 	Name             *string
+	Tags             []string
 	Port             *Port
 	Region           *string
 	Flavor           *string
@@ -117,9 +118,12 @@ func (e *Instance) Find(c *fi.Context) (*Instance, error) {
 	}
 	cloud := c.Cloud.(openstack.OpenstackCloud)
 	computeClient := cloud.ComputeClient()
-	serverPage, err := servers.List(computeClient, servers.ListOpts{
-		Name: fmt.Sprintf("^%s$", fi.StringValue(e.Name)),
-	}).AllPages()
+
+	opts := servers.ListOpts{}
+	if len(e.Tags) > 0 {
+		opts.Tags = e.Tags[0]
+	}
+	serverPage, err := servers.List(computeClient, opts).AllPages()
 	if err != nil {
 		return nil, fmt.Errorf("error finding server with name %s: %v", fi.StringValue(e.Name), err)
 	}
@@ -137,12 +141,12 @@ func (e *Instance) Find(c *fi.Context) (*Instance, error) {
 	server := serverList[0]
 	actual := &Instance{
 		ID:               fi.String(server.ID),
-		Name:             fi.String(server.Name),
 		SSHKey:           fi.String(server.KeyName),
 		Lifecycle:        e.Lifecycle,
 		Metadata:         server.Metadata,
 		Role:             fi.String(server.Metadata["KopsRole"]),
 		AvailabilityZone: e.AvailabilityZone,
+		Tags:             *server.Tags,
 	}
 
 	ports, err := cloud.ListPorts(ports.ListOpts{
@@ -191,6 +195,7 @@ func (e *Instance) Find(c *fi.Context) (*Instance, error) {
 	actual.ForAPIServer = e.ForAPIServer
 
 	// Immutable fields
+	actual.Name = e.Name
 	actual.Flavor = e.Flavor
 	actual.Image = e.Image
 	actual.UserData = e.UserData
@@ -251,7 +256,6 @@ func (_ *Instance) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e, change
 		if err != nil {
 			return fmt.Errorf("failed to find flavor %v: %v", flavorName, err)
 		}
-
 		opt := servers.CreateOpts{
 			Name:      fi.StringValue(e.Name),
 			ImageRef:  image.ID,
@@ -262,9 +266,11 @@ func (_ *Instance) RenderOpenstack(t *openstack.OpenstackAPITarget, a, e, change
 				},
 			},
 			Metadata:       e.Metadata,
+			Tags:           e.Tags,
 			ServiceClient:  t.Cloud.ComputeClient(),
 			SecurityGroups: e.SecurityGroups,
 		}
+
 		if e.UserData != nil {
 			bytes, err := fi.ResourceAsBytes(e.UserData)
 			if err != nil {

@@ -40,6 +40,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/loadbalancers"
 	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/monitors"
 	v2pools "github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/pools"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/attributestags"
 	l3floatingip "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/routers"
 	sg "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/security/groups"
@@ -65,6 +66,7 @@ const (
 	TagClusterName           = "KubernetesCluster"
 	TagRoleMaster            = "master"
 	TagKopsNetwork           = "KopsNetwork"
+	TagKopsName              = "KopsName"
 	ResourceTypePort         = "ports"
 	ResourceTypeNetwork      = "networks"
 	ResourceTypeSubnet       = "subnets"
@@ -180,6 +182,9 @@ type OpenstackCloud interface {
 
 	//DeleteTag removes tag from resource
 	DeleteTag(resource string, id string, tag string) error
+
+	//ReplaceAll updates all tags on a resource, replacing any existing tags
+	ReplaceAllTags(resource string, id string, opts attributestags.ReplaceAllOptsBuilder) error
 
 	//ListRouters will return the Neutron routers which match the options
 	ListRouters(opt routers.ListOpts) ([]routers.Router, error)
@@ -390,7 +395,8 @@ func NewOpenstackCloud(tags map[string]string, spec *kops.ClusterSpec) (Openstac
 		return nil, fmt.Errorf("error building nova client: %v", err)
 	}
 	// 2.47 is the minimum version where the compute API /server/details returns flavor names
-	novaClient.Microversion = "2.47"
+	// 2.52 is the minimum version where the compute API tags
+	novaClient.Microversion = "2.52"
 
 	glanceClient, err := os.NewImageServiceV2(provider, gophercloud.EndpointOpts{
 		Type:   "image",

@@ -147,6 +147,19 @@ func deleteInstance(c OpenstackCloud, i *cloudinstances.CloudInstance) error {
 }
 
 func (c *openstackCloud) DeleteInstanceWithID(instanceID string) error {
+	ports, err := c.ListPorts(ports.ListOpts{
+		DeviceID: instanceID,
+	})
+	if err != nil {
+		return fmt.Errorf("Unable to list ports %v", err)
+	}
+
+	for _, port := range ports {
+		err = c.DeletePort(port.ID)
+		if err != nil {
+			return fmt.Errorf("Unable to delete port %v", err)
+		}
+	}
 	return deleteInstanceWithID(c, instanceID)
 }
 

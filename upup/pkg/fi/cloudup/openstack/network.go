@@ -69,6 +69,27 @@ func deleteTag(c OpenstackCloud, resource string, id string, tag string) error {
 	}
 }
 
+func (c *openstackCloud) ReplaceAllTags(resource string, id string, opts attributestags.ReplaceAllOptsBuilder) error {
+	return replaceAllTags(c, resource, id, opts)
+}
+
+func replaceAllTags(c OpenstackCloud, resource string, id string, opts attributestags.ReplaceAllOptsBuilder) error {
+	done, err := vfs.RetryWithBackoff(readBackoff, func() (bool, error) {
+		_, err := attributestags.ReplaceAll(c.NetworkingClient(), resource, id, opts).Extract()
+		if err != nil {
+			return false, fmt.Errorf("error replacing tags %v: %v", opts, err)
+		}
+		return true, nil
+	})
+	if err != nil {
+		return err
+	} else if done {
+		return nil
+	} else {
+		return wait.ErrWaitTimeout
+	}
+}
+
 func (c *openstackCloud) FindNetworkBySubnetID(subnetID string) (*networks.Network, error) {
 	return findNetworkBySubnetID(c, subnetID)
 }

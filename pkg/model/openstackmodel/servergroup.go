@@ -17,6 +17,7 @@ limitations under the License.
 package openstackmodel
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"regexp"
 	"sort"
@@ -106,7 +107,9 @@ func (b *ServerGroupModelBuilder) buildInstances(c *fi.ModelBuilderContext, sg *
 		// FIXME: Must ensure 63 or less characters
 		// replace all dots and _ with -, this is needed to get external cloudprovider working
 		iName := strings.Replace(strings.ToLower(fmt.Sprintf("%s-%d.%s", ig.Name, i+1, b.ClusterName())), "_", "-", -1)
-		instanceName := fi.String(strings.Replace(iName, ".", "-", -1))
+		fullInstanceName := fi.String(strings.Replace(iName, ".", "-", -1))
+		instanceNameTag := fmt.Sprintf("%s:%s", openstack.TagKopsName, fi.StringValue(fullInstanceName))
+		instanceName := fi.String(makeInstanceName(i+1, ig.Name, ig.GetGeneration(), b.Cluster.GetGeneration()))
 
 		var az *string
 		var subnets []*openstacktasks.Subnet
@@ -133,7 +136,7 @@ func (b *ServerGroupModelBuilder) buildInstances(c *fi.ModelBuilderContext, sg *
 		portTask := &openstacktasks.Port{
 			Name:                     fi.String(fmt.Sprintf("%s-%s", "port", *instanceName)),
 			Network:                  b.LinkToNetwork(),
-			Tag:                      s(b.ClusterName()),
+			Tags:                     []string{instanceNameTag, b.ClusterName()},
 			SecurityGroups:           securityGroups,
 			AdditionalSecurityGroups: ig.Spec.AdditionalSecurityGroups,
 			Subnets:                  subnets,
@@ -154,6 +157,7 @@ func (b *ServerGroupModelBuilder) buildInstances(c *fi.ModelBuilderContext, sg *
 			Metadata:         igMeta,
 			SecurityGroups:   ig.Spec.AdditionalSecurityGroups,
 			AvailabilityZone: az,
+			Tags:             []string{instanceNameTag},
 		}
 		c.AddTask(instanceTask)
 
@@ -166,7 +170,7 @@ func (b *ServerGroupModelBuilder) buildInstances(c *fi.ModelBuilderContext, sg *
 			switch ig.Spec.Role {
 			case kops.InstanceGroupRoleBastion:
 				t := &openstacktasks.FloatingIP{
-					Name:      fi.String(fmt.Sprintf("%s-%s", "fip", *instanceTask.Name)),
+					Name:      fi.String(fmt.Sprintf("%s-%s", "fip", *fullInstanceName)),
 					Lifecycle: b.Lifecycle,
 				}
 				c.AddTask(t)
@@ -175,7 +179,7 @@ func (b *ServerGroupModelBuilder) buildInstances(c *fi.ModelBuilderContext, sg *
 
 				if b.Cluster.Spec.Topology == nil || b.Cluster.Spec.Topology.Masters != kops.TopologyPrivate {
 					t := &openstacktasks.FloatingIP{
-						Name:      fi.String(fmt.Sprintf("%s-%s", "fip", *instanceTask.Name)),
+						Name:      fi.String(fmt.Sprintf("%s-%s", "fip", *fullInstanceName)),
 						Lifecycle: b.Lifecycle,
 					}
 					c.AddTask(t)
@@ -185,7 +189,7 @@ func (b *ServerGroupModelBuilder) buildInstances(c *fi.ModelBuilderContext, sg *
 			default:
 				if b.Cluster.Spec.Topology == nil || b.Cluster.Spec.Topology.Nodes != kops.TopologyPrivate {
 					t := &openstacktasks.FloatingIP{
-						Name:      fi.String(fmt.Sprintf("%s-%s", "fip", *instanceTask.Name)),
+						Name:      fi.String(fmt.Sprintf("%s-%s", "fip", *fullInstanceName)),
 						Lifecycle: b.Lifecycle,
 					}
 					c.AddTask(t)
@@ -196,6 +200,17 @@ func (b *ServerGroupModelBuilder) buildInstances(c *fi.ModelBuilderContext, sg *
 	}
 
 	return nil
+}
+
+// makeInstanceName generates name for the instance
+// the instance format is [name]-[6 character hash]
+func makeInstanceName(index int32, name string, igGeneration int64, clusterGeneration int64) string {
+	h := sha256.New()
+	value := fmt.Sprintf("%d-%s-%d-%d", index, name, igGeneration, clusterGeneration)
+	h.Write([]byte(value))
+	hash := fmt.Sprintf("%x", h.Sum(nil))[0:6]
+	r := strings.NewReplacer("_", "-", ".", "-")
+	return fmt.Sprintf("%s-%s", r.Replace(strings.ToLower(name)), hash)
 }
 
 func (b *ServerGroupModelBuilder) associateFIPToKeypair(fipTask *openstacktasks.FloatingIP) {
