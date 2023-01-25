@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +28,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -114,11 +116,10 @@ func (c *NodeUpCommand) Run(out io.Writer) error {
 	var nodeConfig *nodeup.NodeConfig
 
 	if bootConfig.ConfigServer != nil && len(bootConfig.ConfigServer.Servers) > 0 {
-		response, err := getNodeConfigFromServers(ctx, &bootConfig, region)
+		nodeConfig, err = findNodeConfigFromServer(ctx, &bootConfig, region)
 		if err != nil {
-			return fmt.Errorf("failed to get node config from server: %w", err)
+			return fmt.Errorf("could not find config: %v", err)
 		}
-		nodeConfig = response.NodeConfig
 	} else if fi.ValueOf(bootConfig.ConfigBase) != "" {
 		var err error
 		configBase, err = vfs.Context.BuildVfsPath(*bootConfig.ConfigBase)
@@ -403,6 +404,42 @@ func (c *NodeUpCommand) Run(out io.Writer) error {
 		}
 	}
 	return nil
+}
+
+func findNodeConfigFromServer(ctx context.Context, bootConfig *nodeup.BootConfig, region string) (*nodeup.NodeConfig, error) {
+	nodeConfigFile := "/etc/kubernetes/nodeconfig"
+	data, err := os.ReadFile(nodeConfigFile)
+	nodeConfig := &nodeup.NodeConfig{}
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("unable to read file %s: %v", nodeConfigFile, err)
+		}
+		response, err := getNodeConfigFromServers(ctx, bootConfig, region)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get node config from server: %w", err)
+		}
+		nodeConfig = response.NodeConfig
+		content, err := json.Marshal(nodeConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		err = os.MkdirAll(filepath.Dir(nodeConfigFile), 0755)
+		if err != nil {
+			return nil, err
+		}
+
+		err = os.WriteFile(nodeConfigFile, content, 0644)
+		if err != nil {
+			return nil, fmt.Errorf("unable to write to file %s: %v", nodeConfigFile, err)
+		}
+	} else {
+		err := json.Unmarshal(data, &nodeConfig)
+		if err != nil {
+			return nil, fmt.Errorf("unable to unmarshal json %s: %v", nodeConfigFile, err)
+		}
+	}
+	return nodeConfig, nil
 }
 
 func getMachineType() (string, error) {

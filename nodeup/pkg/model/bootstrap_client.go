@@ -17,9 +17,12 @@ limitations under the License.
 package model
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"k8s.io/kops/pkg/apis/kops"
@@ -78,13 +81,33 @@ func (b BootstrapClientBuilder) Build(c *fi.NodeupModelBuilderContext) error {
 		BaseURL:       baseURL,
 	}
 
+	dir := b.PathSrvKubernetes()
+	knownFileLocations := make(map[string][]string)
+	knownFileLocations["kubelet-server"] = []string{filepath.Join(dir, "kubelet-server.key"), filepath.Join(dir, "kubelet-server.crt")}
+	knownFileLocations["etcd-client-cilium"] = []string{"/etc/kubernetes/pki/cilium/etcd-client-cilium.crt", "/etc/kubernetes/pki/cilium/etcd-client-cilium.key"}
+	knownFileLocations["kube-proxy"] = []string{"/var/lib/kube-proxy/kubeconfig"}
+	knownFileLocations["kube-router"] = []string{"/var/lib/kube-router/kubeconfig"}
+	knownFileLocations["kubelet"] = []string{b.KubeletKubeConfig()}
+
 	bootstrapClientTask := &nodetasks.BootstrapClientTask{
 		Client:     bootstrapClient,
 		Certs:      b.bootstrapCerts,
 		KeypairIDs: b.bootstrapKeypairIDs,
 	}
 
-	for _, cert := range b.bootstrapCerts {
+	filtered := make(map[string]*nodetasks.BootstrapCert)
+	for key := range b.bootstrapCerts {
+		locations, ok := knownFileLocations[key]
+		if !ok {
+			return fmt.Errorf("could not find file locations for %s", key)
+		}
+		for _, location := range locations {
+			if _, err := os.Stat(location); errors.Is(err, os.ErrNotExist) {
+				filtered[key] = b.bootstrapCerts[key]
+			}
+		}
+	}
+	for _, cert := range filtered {
 		cert.Cert.Task = bootstrapClientTask
 		cert.Key.Task = bootstrapClientTask
 	}

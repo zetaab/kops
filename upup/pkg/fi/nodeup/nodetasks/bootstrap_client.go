@@ -84,6 +84,10 @@ func (b *BootstrapClientTask) Run(c *fi.NodeupContext) error {
 		b.keys = map[string]*pki.PrivateKey{}
 	}
 
+	if len(b.Certs) == 0 {
+		return nil
+	}
+
 	for name, certRequest := range b.Certs {
 		key, ok := b.keys[name]
 		if !ok {
